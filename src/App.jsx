@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 const categories = [
   { name: "All", icon: "✦" },
@@ -158,14 +158,21 @@ function App() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("featured");
-  const [cart, setCart] = useState(() => JSON.parse(localStorage.getItem("luma-cart") || "[]"));
+  const [cart, setCart] = useState(() => {
+    const payment = new URLSearchParams(window.location.search).get("payment");
+    if (payment === "success") {
+      localStorage.removeItem("luma-cart");
+      return [];
+    }
+    return JSON.parse(localStorage.getItem("luma-cart") || "[]");
+  });
   const [wishlist, setWishlist] = useState(() => JSON.parse(localStorage.getItem("luma-wishlist") || "[]"));
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [orders, setOrders] = useState([]);
+  const [orders] = useState([]);
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
   const [toast, setToast] = useState("");
@@ -189,6 +196,20 @@ function App() {
   useEffect(() => {
     localStorage.setItem("luma-wishlist", JSON.stringify(wishlist));
   }, [wishlist]);
+
+  useEffect(() => {
+    const payment = new URLSearchParams(window.location.search).get("payment");
+    if (payment === "success") {
+      const timer = window.setTimeout(() => setToast("Payment received. Your order is confirmed."), 0);
+      window.history.replaceState({}, "", window.location.pathname);
+      return () => window.clearTimeout(timer);
+    } else if (payment === "cancelled") {
+      const timer = window.setTimeout(() => setToast("Payment cancelled. Your bag is still saved."), 0);
+      window.history.replaceState({}, "", window.location.pathname);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -257,15 +278,13 @@ function App() {
         else items.push({ product: item._id, quantity: 1 });
         return items;
       }, []);
-      const { data } = await axios.post(`${API_URL}/api/orders`, { items: grouped }, {
+      const { data } = await axios.post(`${API_URL}/api/payments/create-checkout-session`, { items: grouped }, {
         withCredentials: true,
         headers: { "x-csrf-token": token }
       });
-      setOrders((items) => [data, ...items]);
-      setCart([]);
       setCheckoutOpen(false);
       setCartOpen(false);
-      setToast("Order placed. We will take it from here.");
+      window.location.href = data.checkoutUrl;
     } catch (error) {
       setToast(error.response?.data?.message || "Sign in before placing an order");
       setAuthOpen(true);
@@ -551,7 +570,7 @@ function App() {
       )}
       {checkoutOpen && (
         <div className="modal-backdrop" onClick={() => setCheckoutOpen(false)} role="presentation">
-          <section className="checkout-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setCheckoutOpen(false)}>×</button><p className="eyebrow">SECURE CHECKOUT</p><h2>Almost yours.</h2><p>Your payment is handled by a trusted provider. Luma never stores card details.</p><div className="checkout-summary"><span>{cart.length} items</span><strong>₹{cartTotal}</strong></div><button className="primary-button" type="button" onClick={placeOrder}>Place order securely <span>→</span></button><small>Stripe / Razorpay integration can be connected with server-side keys.</small></section>
+          <section className="checkout-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setCheckoutOpen(false)}>×</button><p className="eyebrow">SECURE CHECKOUT</p><h2>Almost yours.</h2><p>Your payment is handled securely by Stripe. Luma never stores card details.</p><div className="checkout-summary"><span>{cart.length} items</span><strong>₹{cartTotal}</strong></div><button className="primary-button" type="button" onClick={placeOrder}>Pay securely with Stripe <span>→</span></button><small>You will be redirected to Stripe to complete payment.</small></section>
         </div>
       )}
     </div>

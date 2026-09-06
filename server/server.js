@@ -29,6 +29,8 @@ app.use(cors({
   },
   credentials: true
 }));
+const { handleWebhook } = require("./routes/paymentRoutes");
+app.post("/api/payments/webhook", express.raw({ type: "application/json" }), handleWebhook);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -54,6 +56,7 @@ app.get("/api/csrf", (req, res) => {
 app.use("/api/auth", require("./middleware/csrf"), require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/orders", require("./middleware/csrf"), require("./routes/orderRoutes"));
+app.use("/api/payments", require("./middleware/csrf"), require("./routes/paymentRoutes").router);
 
 mongoose
   .connect(process.env.MONGO_URI)

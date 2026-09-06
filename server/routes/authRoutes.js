@@ -26,7 +26,7 @@ router.post("/register", async (req, res) => {
     const user = await User.create({ name, email, passwordHash: await bcrypt.hash(password, 12) });
     setSession(res, user);
     res.status(201).json({ user: { name: user.name, email: user.email, role: user.role } });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Unable to create account" });
   }
 });
