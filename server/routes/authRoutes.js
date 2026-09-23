@@ -21,9 +21,10 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ message: "Use a name, valid email, and password of at least 8 characters" });
   }
   try {
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(409).json({ message: "An account with this email already exists" });
-    const user = await User.create({ name, email, passwordHash: await bcrypt.hash(password, 12) });
+    const user = await User.create({ name: name.trim(), email: normalizedEmail, passwordHash: await bcrypt.hash(password, 12) });
     setSession(res, user);
     res.status(201).json({ user: { name: user.name, email: user.email, role: user.role } });
   } catch {
@@ -34,7 +35,7 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (!emailPattern.test(email || "") || !password) return res.status(400).json({ message: "Email and password are required" });
-  const user = await User.findOne({ email: email.toLowerCase() });
+  const user = await User.findOne({ email: email.trim().toLowerCase() });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ message: "Invalid email or password" });
   setSession(res, user);
   res.json({ user: { name: user.name, email: user.email, role: user.role } });

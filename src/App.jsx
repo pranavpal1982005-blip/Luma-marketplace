@@ -2,7 +2,44 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+
+function readStoredArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Storage can be unavailable when the app is opened directly from a file.
+    }
+    return [];
+  }
+}
+
+function writeStoredArray(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // The in-memory cart and wishlist continue to work for the current session.
+  }
+}
+
+function createImageFallback(name, category) {
+  const safeName = String(name).replace(/[<>&"]/g, "");
+  const safeCategory = String(category).replace(/[<>&"]/g, "");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800"><rect width="800" height="800" fill="#e9e4df"/><circle cx="640" cy="160" r="260" fill="#d9cbe8"/><text x="60" y="110" fill="#7055d7" font-family="Arial" font-size="28" font-weight="700">${safeCategory.toUpperCase()}</text><text x="60" y="660" fill="#211d2b" font-family="Arial" font-size="46" font-weight="700">${safeName}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function handleImageError(event, product) {
+  const fallback = createImageFallback(product.name, product.category);
+  if (event.currentTarget.src !== fallback) {
+    event.currentTarget.onerror = null;
+    event.currentTarget.src = fallback;
+  }
+}
 
 const categories = [
   { name: "All", icon: "✦" },
@@ -164,9 +201,9 @@ function App() {
       localStorage.removeItem("luma-cart");
       return [];
     }
-    return JSON.parse(localStorage.getItem("luma-cart") || "[]");
+    return readStoredArray("luma-cart");
   });
-  const [wishlist, setWishlist] = useState(() => JSON.parse(localStorage.getItem("luma-wishlist") || "[]"));
+  const [wishlist, setWishlist] = useState(() => readStoredArray("luma-wishlist"));
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -181,7 +218,10 @@ function App() {
   useEffect(() => {
     axios
       .get(`${API_URL}/api/products`)
-      .then(({ data }) => setProducts(data.length ? [...data, ...generatedCatalog] : fullDemoCatalog))
+      .then(({ data }) => {
+        const apiProducts = Array.isArray(data) ? data : Array.isArray(data?.products) ? data.products : [];
+        setProducts(apiProducts.length ? [...apiProducts, ...generatedCatalog] : fullDemoCatalog);
+      })
       .catch(() => {
         setProducts(fullDemoCatalog);
         setLoadError("We’re showing our featured collection while the catalog reconnects.");
@@ -190,11 +230,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("luma-cart", JSON.stringify(cart));
+    writeStoredArray("luma-cart", cart);
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem("luma-wishlist", JSON.stringify(wishlist));
+    writeStoredArray("luma-wishlist", wishlist);
   }, [wishlist]);
 
   useEffect(() => {
@@ -223,6 +263,17 @@ function App() {
     const timer = window.setTimeout(() => setToast(""), 2200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.querySelector(".search-box input")?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   const filteredProducts = useMemo(() => {
     const result = products.filter((product) => {
@@ -404,7 +455,7 @@ function App() {
               <strong>Essentials<br />for your<br /><i>everyday.</i></strong>
             </div>
             <div className="hero-product-card card-front">
-              <img src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=85" alt="Curated fashion collection" />
+              <img src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=85" alt="Curated fashion collection" onError={(event) => handleImageError(event, { name: "Curated fashion collection", category: "Luma edit" })} />
               <div><span>THE DAILY EDIT</span><strong>01 / 04</strong></div>
             </div>
             <span className="floating-star star-one">✦</span>
@@ -495,7 +546,7 @@ function App() {
             {filteredProducts.map((product) => (
               <article className="product-card" key={product._id}>
                 <div className="product-image">
-                  <img src={product.image} alt={product.name} />
+                  <img src={product.image} alt={product.name} onError={(event) => handleImageError(event, product)} />
                   <span className="product-badge">{product.badge || "Curated"}</span>
                   <button
                     className={`wishlist ${wishlist.includes(product._id) ? "saved" : ""}`}
@@ -536,7 +587,7 @@ function App() {
             <div className="drawer-heading"><div><p className="eyebrow">YOUR PICKS</p><h2>Your bag <span>{cart.length}</span></h2></div><button type="button" onClick={() => setCartOpen(false)}>×</button></div>
             {cart.length ? (
               <>
-                <div className="cart-items">{cart.map((item, index) => <div className="cart-item" key={`${item._id}-${index}`}><img src={item.image} alt="" /><div><strong>{item.name}</strong><span>₹{item.price}</span></div></div>)}</div>
+                <div className="cart-items">{cart.map((item, index) => <div className="cart-item" key={`${item._id}-${index}`}><img src={item.image} alt="" onError={(event) => handleImageError(event, item)} /><div><strong>{item.name}</strong><span>₹{item.price}</span></div><button type="button" aria-label={`Remove ${item.name} from bag`} onClick={() => setCart((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div>
                 <div className="cart-total"><span>Subtotal</span><strong>₹{cartTotal}</strong></div>
                 <button className="primary-button checkout-button" type="button" onClick={() => setCheckoutOpen(true)}>Continue to checkout <span>→</span></button>
               </>
@@ -549,7 +600,7 @@ function App() {
         <div className="modal-backdrop" onClick={() => setSelectedProduct(null)} role="presentation">
           <section className="product-modal" onClick={(event) => event.stopPropagation()}>
             <button className="modal-close" type="button" onClick={() => setSelectedProduct(null)}>×</button>
-            <img src={selectedProduct.image} alt={selectedProduct.name} />
+            <img src={selectedProduct.image} alt={selectedProduct.name} onError={(event) => handleImageError(event, selectedProduct)} />
             <div className="modal-copy"><p className="eyebrow">{selectedProduct.category}</p><h2>{selectedProduct.name}</h2><p className="modal-rating">★ {selectedProduct.rating || "4.5"} · {selectedProduct.reviews || 120} reviews</p><p>Thoughtfully selected for quality, comfort, and everyday use. A customer favourite with fast delivery and easy returns.</p><strong>₹{selectedProduct.price}</strong><button className="primary-button" type="button" onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }}>Add to bag <span>→</span></button></div>
           </section>
         </div>
